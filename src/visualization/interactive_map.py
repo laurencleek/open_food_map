@@ -192,10 +192,12 @@ def build_map(df: pd.DataFrame, center: Tuple[float,float]) -> folium.Map:
 			"cuisine": str(row.get("cuisine_norm","") or "Unknown"),
 			"rating_bucket": str(row.get("rating_bucket","Unknown"))
 		})
-	from collections import Counter
-	top_cuisines = [c for c,_ in Counter([p["cuisine"] for p in points if p["cuisine"]!="Unknown"]).most_common(30)]
+	
+	# Get all unique cuisines for the filter, sorted alphabetically
+	unique_cuisines = sorted(list(set([p["cuisine"] for p in points if p["cuisine"]!="Unknown"])))
+	
 	js_points = json.dumps(points)
-	js_cuisines = json.dumps(top_cuisines)
+	js_cuisines = json.dumps(unique_cuisines)
 
 	# Inject JS for filtering & cluster creation
 	filter_js = f"""

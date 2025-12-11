@@ -85,15 +85,8 @@ def format_cuisine_name(c):
 
 df["cuisine"] = df["cuisine"].fillna("Unknown").apply(format_cuisine_name)
 
-# Get top cuisines for grouping
-top_cuisines = df["cuisine"].value_counts().head(20).index.tolist()
-
-def clean_cuisine(c):
-    if c in top_cuisines:
-        return c
-    return "Other"
-
-df["cuisine_group"] = df["cuisine"].apply(clean_cuisine)
+# Use all identified cuisines (no grouping into 'Other')
+df["cuisine_group"] = df["cuisine"]
 
 # Prepare data list for JSON
 data_list = []
