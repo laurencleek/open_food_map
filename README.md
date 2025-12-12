@@ -33,6 +33,14 @@ Contributions, critiques, and extensions are very welcome.
 
 ## Setup
 
+#### Google API requirements
+
+The data collection scripts require the **Google Places API**.
+
+Enabling only the **Maps JavaScript API** or **Maps Embed API** is not sufficient and will result in data collection completing with no restaurants found.
+
+If the Places API is not enabled, the collector may run to completion but produce no output files.
+
 1.  **Clone the repository**:
     ```bash
     git clone https://github.com/laurencleek/open_food_map.git
