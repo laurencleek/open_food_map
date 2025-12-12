@@ -63,25 +63,23 @@ To analyze the collected data and find underrated restaurants:
 python src/analysis/analyze_underrated.py --city-name london
 ```
 
-This will read from `data/raw/london_restaurants.csv` (or `data/sample` if not found) and output processed files to `data/processed`.
+This will read from `data/raw/london_restaurant_details.csv` (or `data/sample/london_restaurant_details.csv` if not found) and write:
+
+- `data/processed/london_hype_adjusted_ratings.csv`
 
 ### 3. Visualization
 
-To generate an interactive map:
-
-```bash
-python src/visualization/interactive_map.py
-```
-
-This will look for `london_restaurant_details.csv` in `data/processed`, `data/raw`, or `data/sample` and generate an HTML map.
-
-**Advanced Cuisine Map**:
-For a more detailed map with cuisine filtering and borough analysis:
+To generate the interactive dashboard with cuisine filtering and borough analysis:
 
 ```bash
 python src/visualization/interactive_cuisine_map.py --city-name london
 ```
-This requires the analysis step to be completed first.
+
+This requires the analysis step to be completed first (it reads `data/processed/{city}_hype_adjusted_ratings.csv`). It will generate:
+
+- `output/london_restaurants_interactive.html`
+
+The repository also includes a pre-generated `output/london_restaurants_interactive.html` so you can open it immediately.
 
 ## How to Contribute & Create New Maps
 
@@ -114,7 +112,7 @@ If you've improved the code or want to share a sample dataset for a new city, pl
 
 ## Contact
 
-Created by **Lauren Cleek**.
+Created by **Lauren leek**.
 
 If you have any questions or suggestions, please feel free to contact me at [laurencaroline.leek@eui.eu](mailto:laurencaroline.leek@eui.eu).
 

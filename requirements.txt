@@ -3,8 +3,6 @@ numpy
 scikit-learn
 geopandas
 shapely
-matplotlib
-seaborn
-folium
 requests
 python-dotenv
+pytest

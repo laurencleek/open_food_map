@@ -1,19 +1,28 @@
 import pandas as pd
 import json
 import os
+import sys
 import argparse
 import geopandas as gpd
 from shapely.geometry import Point
+
+# Determine the project root based on this script's location
+# Script is in src/visualization/
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+DEFAULT_INPUT_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
+DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
+DEFAULT_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
 
 # ============================================================
 # 1. LOAD AND PREPARE DATA
 # ============================================================
 def get_args():
     parser = argparse.ArgumentParser(description="Create interactive cuisine map")
-    parser.add_argument("--input-dir", type=str, default="data/processed", help="Input directory")
-    parser.add_argument("--output-dir", type=str, default="output", help="Output directory")
+    parser.add_argument("--input-dir", type=str, default=DEFAULT_INPUT_DIR, help="Input directory")
+    parser.add_argument("--output-dir", type=str, default=DEFAULT_OUTPUT_DIR, help="Output directory")
     parser.add_argument("--city-name", type=str, default="london", help="City name")
-    parser.add_argument("--boroughs-file", type=str, default="data/raw/london_boroughs.geojson", help="Path to boroughs geojson")
+    parser.add_argument("--boroughs-file", type=str, default=os.path.join(DEFAULT_DATA_DIR, "london_boroughs.geojson"), help="Path to boroughs geojson")
     return parser.parse_known_args()[0]
 
 args = get_args()
@@ -25,15 +34,17 @@ OUTPUT_FILE = os.path.join(args.output_dir, f"{args.city_name}_restaurants_inter
 # Check if input file exists, if not try sample or fail
 if not os.path.exists(INPUT_FILE):
     print(f"Warning: {INPUT_FILE} not found.")
-    # Try to find it in the current directory or other locations if needed, or just fail
-    # For now, let's assume the user ran the analysis script first.
-    
 print(f"Loading {INPUT_FILE}...")
 try:
     df = pd.read_csv(INPUT_FILE)
 except FileNotFoundError:
     print(f"Error: Could not find {INPUT_FILE}. Please run the analysis script first.")
-    exit(1)
+    sys.exit(1)
+
+# Ensure df is defined
+if 'df' not in locals():
+    print("Error: DataFrame not loaded.")
+    sys.exit(1)
 
 # Filter valid coordinates
 df = df.dropna(subset=["lat", "lon"])
@@ -41,6 +52,7 @@ df = df.dropna(subset=["lat", "lon"])
 # --- SPATIAL JOIN FOR BOROUGHS ---
 print("Assigning boroughs...")
 borough_centers = {}
+all_borough_names = []
 try:
     boroughs = gpd.read_file(BOROUGH_FILE)
     # Ensure CRS matches (assuming WGS84 for lat/lon)
@@ -55,6 +67,10 @@ try:
             c = row.geometry.centroid
             # Use 'name' as it hasn't been renamed to 'borough_name' yet
             borough_centers[row['name']] = [c.y, c.x]
+
+    # Keep a complete list of borough names for the UI dropdown (even if
+    # no restaurants are currently assigned to that borough).
+    all_borough_names = sorted([str(k) for k in borough_centers.keys() if str(k) and str(k) != "Unknown"])
 
     # Create GeoDataFrame for restaurants
     geometry = [Point(xy) for xy in zip(df.lon, df.lat)]
@@ -73,6 +89,7 @@ try:
 except Exception as e:
     print(f"Warning: Could not assign boroughs ({e}). Defaulting to 'Unknown'.")
     df['borough'] = "Unknown"
+    all_borough_names = []
 
 # Normalize cuisine column
 def format_cuisine_name(c):
@@ -87,6 +104,16 @@ df["cuisine"] = df["cuisine"].fillna("Unknown").apply(format_cuisine_name)
 
 # Use all identified cuisines (no grouping into 'Other')
 df["cuisine_group"] = df["cuisine"]
+
+# Chain vs independent (expected in analyzed CSV; fallback to 0=independent if missing)
+if "is_chain" not in df.columns:
+    df["is_chain"] = 0
+
+# Bounds for initial map view (ensure categories outside central London still appear)
+data_bounds = [
+    [float(df["lat"].min()), float(df["lon"].min())],
+    [float(df["lat"].max()), float(df["lon"].max())],
+]
 
 # Prepare data list for JSON
 data_list = []
@@ -103,7 +130,8 @@ for _, row in df.iterrows():
             "price": int(row["price_level"]) if pd.notnull(row["price_level"]) else 1,
             "vicinity": str(row["vicinity"]).replace('"', ''),
             "hype_residual": round(float(row["hype_residual"]), 2) if pd.notnull(row.get("hype_residual")) else 0.0,
-            "borough": str(row["borough"])
+            "borough": str(row["borough"]),
+            "is_chain": int(row["is_chain"]) if pd.notnull(row.get("is_chain")) else 0,
         }
         data_list.append(item)
     except (ValueError, TypeError):
@@ -493,6 +521,12 @@ html_content = f"""
             <input type="checkbox" id="underratedToggle" onchange="updateMap()">
             <div class="toggle-switch"></div>
         </label>
+
+        <label class="toggle-container">
+            <span class="toggle-label">Only Independents</span>
+            <input type="checkbox" id="independentToggle" onchange="updateMap()">
+            <div class="toggle-switch"></div>
+        </label>
         
         <div style="margin-bottom: 15px;">
             <label style="display:block; font-size:12px; font-weight:500; margin-bottom:5px;">Borough</label>
@@ -551,6 +585,8 @@ html_content = f"""
     // --- Data ---
     var restaurants = {json.dumps(data_list)};
     var boroughCenters = {json.dumps(borough_centers)};
+    var allBoroughs = {json.dumps(all_borough_names)};
+    var dataBounds = {json.dumps(data_bounds)};
     
     // --- State ---
     var activePrices = [1, 2, 3, 4];
@@ -567,6 +603,13 @@ html_content = f"""
         maxZoom: 20
     }}).addTo(map);
 
+    // Ensure the initial view includes all points (important when data contains areas outside central London)
+    try {{
+        map.fitBounds(dataBounds, {{ padding: [30, 30] }});
+    }} catch (e) {{
+        // Fallback to default London view if bounds are invalid
+    }}
+
     var markersLayer = L.layerGroup().addTo(map);
 
     // --- Colors ---
@@ -578,9 +621,41 @@ html_content = f"""
         "#606c38", "#283618", "#dda15e", "#bc6c25", "#333333"
     ];
     
+    // Fixed colors for key cuisines to ensure consistency
+    var fixedColors = {{
+        "Pub": "#d62828",       // Red
+        "British": "#003049",   // Dark Blue
+        "Italian": "#2a9d8f",   // Teal
+        "Indian": "#e9c46a",    // Yellow
+        "Chinese": "#f4a261",   // Orange
+        "Japanese": "#9b5de5",  // Purple
+        "French": "#00bbf9",    // Light Blue
+        "American": "#333333",  // Dark Grey
+        "Cafe": "#bc6c25",      // Brown
+        "Coffee": "#bc6c25",    // Brown
+        "Pizza": "#e76f51",     // Burnt Orange
+        "Burger": "#8d99ae",    // Grey Blue
+        "Thai": "#06d6a0",      // Green
+        "Turkish": "#ef476f",   // Pink
+        "Middle Eastern": "#dda15e" // Tan
+    }};
+    
     var cuisineColors = {{}};
     var uniqueCuisines = [...new Set(restaurants.map(r => r.cuisine_group))].sort();
-    var uniqueBoroughs = [...new Set(restaurants.map(r => r.borough))].sort();
+    // Populate borough dropdown from the GeoJSON list (all boroughs),
+    // but fall back to restaurant-derived boroughs if GeoJSON load failed.
+    var uniqueBoroughs = (allBoroughs && allBoroughs.length)
+        ? [...allBoroughs]
+        : [...new Set(restaurants.map(r => r.borough))].sort();
+
+    // Pin key cuisines to the top so they're always visible in the dropdown/legend
+    var cuisinePriority = {{ "Pub": 0, "British": 1 }};
+    uniqueCuisines.sort((a, b) => {{
+        var pa = (a in cuisinePriority) ? cuisinePriority[a] : 999;
+        var pb = (b in cuisinePriority) ? cuisinePriority[b] : 999;
+        if (pa !== pb) return pa - pb;
+        return a.localeCompare(b);
+    }});
     
     if (uniqueCuisines.includes("Other")) {{
         uniqueCuisines = uniqueCuisines.filter(c => c !== "Other");
@@ -588,7 +663,11 @@ html_content = f"""
     }}
     
     uniqueCuisines.forEach((c, i) => {{
-        cuisineColors[c] = colors[i % colors.length];
+        if (fixedColors[c]) {{
+            cuisineColors[c] = fixedColors[c];
+        }} else {{
+            cuisineColors[c] = colors[i % colors.length];
+        }}
     }});
 
     // --- Populate UI ---
@@ -690,6 +769,7 @@ html_content = f"""
         var minReviews = parseInt(document.getElementById('reviewRange').value);
         var searchText = document.getElementById('searchInput').value.toLowerCase();
         var showUnderrated = document.getElementById('underratedToggle').checked;
+        var onlyIndependents = document.getElementById('independentToggle').checked;
         
         document.getElementById('ratingVal').innerText = minRating.toFixed(1);
         document.getElementById('reviewVal').innerText = minReviews;
@@ -700,6 +780,11 @@ html_content = f"""
         
         restaurants.forEach(r => {{
             // Filters
+            if (onlyIndependents) {{
+                // is_chain: 1 => chain, 0 => independent
+                if (r.is_chain === 1) return;
+            }}
+
             if (showUnderrated) {{
                 // If toggle is ON, only show positive hype residuals
                 if (r.hype_residual <= 0.1) return;

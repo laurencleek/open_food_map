@@ -112,10 +112,11 @@ CUISINE_KEYWORDS = {
     "ethiopian": ["injera","ethiopian","habesha","kitfo","tibs"],
     "caribbean": ["jerk","caribbean","jamaican","trini","roti"],
     "european": ["brasserie","european","continental"],
-    "british": ["pub","british","fish and chips","pie and mash","gastropub"],
+    "british": ["british","fish and chips","pie and mash","sunday roast","full english","roast dinner"],
     "portuguese": ["portuguese","bacalhau","piri piri","porto","lisboa"],
     "polish": ["pierogi","polish","zurek","bigos"],
     "pakistani": ["pakistani","karahi","nihari","haleem","lahori"],
+    "pub": ["pub", "public house", "tavern", "inn", "alehouse", "taproom", "brewery", "brewhouse", "cask", "draught", "arms", "castle", "lion", "crown", "plough", "anchor", "ship", "bell", "swan", "hart", "oak", "wheatsheaf", "greyhound", "coach and horses", "fox and hounds", "rose and crown", "chequers"],
 }
 
 # Extended cuisine keywords (extra categories/variants)
@@ -144,7 +145,6 @@ EXTENDED_CUISINE_KEYWORDS = {
     "mediterranean": ["mediterranean"],
     "asian_fusion": ["asian fusion","pan asian","pan-asian"],
     "gastropub": ["gastropub"],
-    "pub": ["pub", "public house", "tavern", "inn"],
     "cocktail_bar": ["cocktail bar", "speakeasy"],
     "wine_bar": ["wine bar", "bodega", "enoteca"]
 }
@@ -174,7 +174,38 @@ BRAND_KEYWORDS: Dict[str, Dict[str, str]] = {
     "taco bell": {"category": "mexican", "cuisine": "mexican"},
     "chipotle": {"category": "mexican", "cuisine": "mexican"},
     "nandos": {"category": "chicken", "cuisine": "british"},
-    "wetherspoon": {"category": "pub", "cuisine": "british"},
+    "wetherspoon": {"category": "pub", "cuisine": "pub"},
+    "wetherspoons": {"category": "pub", "cuisine": "pub"},
+    "jd wetherspoon": {"category": "pub", "cuisine": "pub"},
+    "greene king": {"category": "pub", "cuisine": "pub"},
+    "fuller's": {"category": "pub", "cuisine": "pub"},
+    "fullers": {"category": "pub", "cuisine": "pub"},
+    "young's": {"category": "pub", "cuisine": "pub"},
+    "youngs": {"category": "pub", "cuisine": "pub"},
+    "nicholson's": {"category": "pub", "cuisine": "pub"},
+    "nicholsons": {"category": "pub", "cuisine": "pub"},
+    "o'neill's": {"category": "pub", "cuisine": "irish"},
+    "oneills": {"category": "pub", "cuisine": "irish"},
+    "all bar one": {"category": "bar", "cuisine": "bar"},
+    "slug and lettuce": {"category": "bar", "cuisine": "bar"},
+    "slug & lettuce": {"category": "bar", "cuisine": "bar"},
+    "walkabout": {"category": "bar", "cuisine": "australian"},
+    "brewdog": {"category": "pub", "cuisine": "pub"},
+    "stonegate": {"category": "pub", "cuisine": "pub"},
+    "marston's": {"category": "pub", "cuisine": "pub"},
+    "marstons": {"category": "pub", "cuisine": "pub"},
+    "mitchells & butlers": {"category": "pub", "cuisine": "pub"},
+    "ember inns": {"category": "pub", "cuisine": "pub"},
+    "sizzling pubs": {"category": "pub", "cuisine": "pub"},
+    "vintage inns": {"category": "pub", "cuisine": "pub"},
+    "chef & brewer": {"category": "pub", "cuisine": "pub"},
+    "chef and brewer": {"category": "pub", "cuisine": "pub"},
+    "hungry horse": {"category": "pub", "cuisine": "pub"},
+    "beefeater": {"category": "pub", "cuisine": "pub"},
+    "brewers fayre": {"category": "pub", "cuisine": "pub"},
+    "yates": {"category": "pub", "cuisine": "pub"},
+    "pitcher & piano": {"category": "bar", "cuisine": "bar"},
+    "revolution": {"category": "bar", "cuisine": "bar"},
     "leon": {"category": "fast_casual", "cuisine": "european"},
     "le pain quotidien": {"category": "bakery", "cuisine": "french"}
 }
@@ -399,6 +430,25 @@ def _score_cuisines(text: str, weight: float, scores: Dict[str, float]):
                 scores[cuisine] = scores.get(cuisine, 0.0) + weight
                 break
 
+# Detect brand from name/website
+def detect_brand(name: str, website: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    n = (name or "").lower()
+    w = _domain(website)
+    
+    for brand, info in BRAND_KEYWORDS.items():
+        # Check name
+        if brand in n:
+            # simple check: is it a distinct word or the whole name?
+            if re.search(rf"\b{re.escape(brand)}\b", n):
+                return brand, info.get("category"), "name_match"
+        
+        # Check website (if brand name is in domain)
+        brand_clean = brand.replace(" ", "")
+        if brand_clean in w:
+            return brand, info.get("category"), "website_match"
+            
+    return None, None, None
+
 # Extended cuisine inference combining extra keywords + brand
 def extended_infer_cuisine(name: str, types: List[str], editorial: Optional[str], reviews: List[Dict], website: Optional[str]) -> Tuple[str, str, Optional[str], Optional[str], Optional[str]]:
     # 1) Brand takes precedence (High confidence)
@@ -466,6 +516,45 @@ def _check_match(text: str, cuisine: str) -> bool:
         for kw in EXTENDED_CUISINE_KEYWORDS[cuisine]:
             if re.search(rf"\b{re.escape(kw)}\b", t): return True
     return False
+
+def _load_reviews_by_place(limit_per_place: int = 5) -> Dict[str, List[Dict]]:
+    reviews: Dict[str, List[Dict]] = {}
+    if not REVIEWS_CSV.exists():
+        return reviews
+    
+    with REVIEWS_CSV.open("r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            pid = row.get("place_id")
+            if not pid: continue
+            if pid not in reviews:
+                reviews[pid] = []
+            if len(reviews[pid]) < limit_per_place:
+                reviews[pid].append(row)
+    return reviews
+
+def _detail_stub_from_base(base_row: Dict) -> Dict:
+    return {
+        "place_id": base_row.get("place_id"),
+        "name": base_row.get("name"),
+        "types": base_row.get("types"),
+        "rating": base_row.get("rating"),
+        "user_ratings_total": base_row.get("user_ratings_total"),
+        "price_level": base_row.get("price_level"),
+        "lat": base_row.get("lat"),
+        "lon": base_row.get("lon"),
+        "vicinity": base_row.get("vicinity"),
+        "business_status": base_row.get("business_status"),
+        "editorial_summary": "",
+        "website": "",
+        "international_phone_number": "",
+        "cuisine_detected": "unknown",
+        "cuisine_source": "",
+        "top_review_language": "",
+        "top_language_share": 0.0,
+        "n_reviews_fetched": 0,
+        "review_language_counts_json": "{}"
+    }
 
 def extend_cuisine_offline(out_path: Optional[pathlib.Path] = None, inplace: bool = False, use_reviews: bool = True,
                            limit_reviews: int = 5, verbose: bool = False, sample_n: int = 8, from_base: bool = False):
@@ -940,5 +1029,3 @@ if __name__ == "__main__":
         sys.exit(0)
 
     main()
-
-
