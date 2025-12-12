@@ -92,7 +92,7 @@ PAGE_TOKEN_WAIT_S   = 2.1
 DETAILS_SLEEP_S     = 0.25
 MAX_RETRIES         = 5
 
-# ---------------------- Cuisine detection rules ---------------------- #
+# --------------------- Cuisine detection rules --------------------- #
 
 CUISINE_KEYWORDS = {
     "italian": ["pizza","pasta","italian","ristorante","trattoria","napoli","sicilian","roma","osteria"],

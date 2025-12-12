@@ -8,6 +8,17 @@ This project provides tools to collect, analyze, and visualize restaurant data. 
 *   **Analysis**: Identify "underrated" restaurants using a machine learning model that compares ratings to review counts and other factors.
 *   **Visualization**: Generate interactive HTML maps to explore the culinary landscape.
 
+## Project Status & Limitations
+
+This project is a work in progress.
+
+- Coverage reflects what the Google Maps API surfaces in generic searches; it is not a census of all restaurants.
+- Rating models capture platform-typical outcomes, not intrinsic food quality.
+- Restaurant age, pricing, review text, and reviewer composition are not yet fully incorporated.
+- Results should be interpreted as exploratory and comparative, not definitive rankings.
+
+Contributions, critiques, and extensions are very welcome.
+
 ## Project Structure
 
 *   `src/`: Source code.
