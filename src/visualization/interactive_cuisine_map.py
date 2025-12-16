@@ -147,7 +147,7 @@ html_content = f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <title>London Restaurant Map</title>
+    <title>{args.city_name.capitalize()} Restaurant Map</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
@@ -503,7 +503,7 @@ html_content = f"""
 
 <div id="sidebar">
     <div class="control-section">
-        <h1>London Food Map</h1>
+        <h1>{args.city_name.capitalize()} Food Map</h1>
         <div style="font-size: 11px; color: #999; margin-top: 4px;">
             Built by <a href="https://laurenleek.eu" target="_blank" style="color: #666; text-decoration: none; font-weight: 500;">Lauren Leek</a>
         </div>
