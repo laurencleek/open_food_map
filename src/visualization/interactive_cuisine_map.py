@@ -416,9 +416,27 @@ html_content = f"""
         }}
         .stats strong {{ color: #1a1a1a; font-size: 16px; display: block; margin-bottom: 4px; }}
 
+        .legend-header {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px 0; }}
+        .legend-header h2 {{ margin: 0; }}
+        .legend-actions {{ display: flex; gap: 8px; margin: 0; }}
+        .legend-actions button {{
+            padding: 4px 8px;
+            border: 1px solid #e0e0e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }}
+        .legend-actions button:hover {{ background: #f0f0f0; }}
+
         .legend {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 150px; overflow-y: auto; }}
-        .legend-item {{ display: flex; align-items: center; font-size: 12px; color: #555; cursor: pointer; padding: 2px; border-radius: 4px; }}
+        .legend-item {{ display: flex; align-items: center; font-size: 12px; color: #555; cursor: pointer; padding: 2px; border-radius: 4px; user-select: none; }}
         .legend-item:hover {{ background: #f0f0f0; }}
+        .legend-item.inactive {{ opacity: 0.35; }}
         .color-dot {{ width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }}
 
         /* Popup Styling */
@@ -493,7 +511,7 @@ html_content = f"""
             <div class="step-icon">🎨</div>
             <div>
                 <strong>Explore Cuisines</strong>
-                <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">Click items in the "Cuisines Legend" to instantly filter the map to that specific cuisine type.</p>
+                <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">Click cuisines in the "Cuisines Legend" to show/hide them on the map, or use the Select all / Deselect all button.</p>
             </div>
         </div>
         
@@ -537,7 +555,7 @@ html_content = f"""
 
         <div style="margin-bottom: 15px;">
             <label style="display:block; font-size:12px; font-weight:500; margin-bottom:5px;">Cuisine</label>
-            <select id="cuisineSelect" onchange="updateMap()">
+            <select id="cuisineSelect" onchange="onCuisineChange()">
                 <option value="All">All Cuisines</option>
             </select>
         </div>
@@ -570,7 +588,12 @@ html_content = f"""
     </div>
 
     <div class="control-section">
-        <h2>Cuisines Legend</h2>
+        <div class="legend-header">
+            <h2>Cuisines Legend</h2>
+            <div class="legend-actions">
+                <button id="toggleAllCuisinesBtn" onclick="toggleAllCuisines()">Deselect all</button>
+            </div>
+        </div>
         <div id="legend" class="legend"></div>
     </div>
 
@@ -590,6 +613,7 @@ html_content = f"""
     
     // --- State ---
     var activePrices = [1, 2, 3, 4];
+    var activeCuisines = new Set();
     
     // --- Map Init ---
     var map = L.map('map', {{preferCanvas: true, zoomControl: false}}).setView([51.5074, -0.1278], 12);
@@ -679,6 +703,8 @@ html_content = f"""
         select.appendChild(opt);
     }});
 
+    activeCuisines = new Set(uniqueCuisines);
+
     var boroughSelect = document.getElementById('boroughSelect');
     uniqueBoroughs.forEach(b => {{
         if (b === "Unknown") return;
@@ -692,13 +718,59 @@ html_content = f"""
     uniqueCuisines.forEach(c => {{
         var item = document.createElement('div');
         item.className = 'legend-item';
+        item.dataset.cuisine = c;
         item.innerHTML = `<div class="color-dot" style="background:${{cuisineColors[c]}}"></div>${{c}}`;
         item.onclick = () => {{
-            select.value = c;
+            select.value = "All";
+            if (activeCuisines.has(c)) {{
+                activeCuisines.delete(c);
+            }} else {{
+                activeCuisines.add(c);
+            }}
+            updateLegendUI();
+            updateToggleAllCuisinesButton();
             updateMap();
         }};
         legend.appendChild(item);
     }});
+
+    function updateLegendUI() {{
+        var items = document.querySelectorAll('#legend .legend-item');
+        items.forEach(el => {{
+            var c = el.dataset.cuisine;
+            el.classList.toggle('inactive', !activeCuisines.has(c));
+        }});
+    }}
+
+    function updateToggleAllCuisinesButton() {{
+        var btn = document.getElementById('toggleAllCuisinesBtn');
+        if (!btn) return;
+        btn.innerText = (activeCuisines.size === uniqueCuisines.length) ? 'Deselect all' : 'Select all';
+    }}
+
+    function toggleAllCuisines() {{
+        if (activeCuisines.size === uniqueCuisines.length) {{
+            activeCuisines = new Set();
+        }} else {{
+            activeCuisines = new Set(uniqueCuisines);
+        }}
+        select.value = "All";
+        updateLegendUI();
+        updateToggleAllCuisinesButton();
+        updateMap();
+    }}
+
+    function onCuisineChange() {{
+        var selectedCuisine = document.getElementById('cuisineSelect').value;
+        if (selectedCuisine === "All") {{
+            activeCuisines = new Set(uniqueCuisines);
+        }} else {{
+            activeCuisines = new Set([selectedCuisine]);
+        }}
+        updateLegendUI();
+        updateToggleAllCuisinesButton();
+        updateMap();
+    }}
 
     // --- Logic ---
     function togglePrice(level, btn) {{
@@ -790,7 +862,11 @@ html_content = f"""
                 if (r.hype_residual <= 0.1) return;
             }}
 
-            if (selectedCuisine !== "All" && r.cuisine_group !== selectedCuisine) return;
+            if (selectedCuisine !== "All") {{
+                if (r.cuisine_group !== selectedCuisine) return;
+            }} else {{
+                if (!activeCuisines.has(r.cuisine_group)) return;
+            }}
             if (selectedBorough !== "All" && r.borough !== selectedBorough) return;
             if (r.rating < minRating) return;
             if (r.reviews < minReviews) return;
@@ -854,6 +930,8 @@ html_content = f"""
     }}
     
     // Initial Load
+    updateLegendUI();
+    updateToggleAllCuisinesButton();
     updateMap();
     
     // Show help modal on startup
