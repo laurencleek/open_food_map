@@ -14,6 +14,22 @@ DEFAULT_INPUT_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
 DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 DEFAULT_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
 
+# City-specific currency mapping
+CITY_CURRENCIES = {
+    # US cities
+    "new_york": "$",
+    "san_francisco": "$",
+    "los_angeles": "$",
+    "miami": "$",
+    "chicago": "$",
+    # UK cities
+    "london": "£",
+    # Euro cities
+    "amsterdam": "€",
+    "dublin": "€",
+}
+DEFAULT_CURRENCY = "£"
+
 # ============================================================
 # 1. LOAD AND PREPARE DATA
 # ============================================================
@@ -22,13 +38,28 @@ def get_args():
     parser.add_argument("--input-dir", type=str, default=DEFAULT_INPUT_DIR, help="Input directory")
     parser.add_argument("--output-dir", type=str, default=DEFAULT_OUTPUT_DIR, help="Output directory")
     parser.add_argument("--city-name", type=str, default="london", help="City name")
-    parser.add_argument("--boroughs-file", type=str, default=os.path.join(DEFAULT_DATA_DIR, "london_boroughs.geojson"), help="Path to boroughs geojson")
+    parser.add_argument("--boroughs-file", type=str, default=None, help="Path to boroughs geojson (auto-detected if not provided)")
     return parser.parse_known_args()[0]
 
 args = get_args()
 
 INPUT_FILE = os.path.join(args.input_dir, f"{args.city_name}_hype_adjusted_ratings.csv")
-BOROUGH_FILE = args.boroughs_file
+
+# Auto-detect borough file based on city name if not explicitly provided
+if args.boroughs_file is None:
+    # Try city-specific borough file (e.g., newyork_boroughs.geojson for new_york)
+    city_borough_file = os.path.join(DEFAULT_DATA_DIR, f"{args.city_name}_boroughs.geojson")
+    if os.path.exists(city_borough_file):
+        BOROUGH_FILE = city_borough_file
+        print(f"Using borough file: {city_borough_file}")
+    else:
+        BOROUGH_FILE = None
+        print(f"No borough file found for {args.city_name}, skipping borough overlay")
+else:
+    BOROUGH_FILE = args.boroughs_file
+
+# Get currency symbol for the city
+currency_symbol = CITY_CURRENCIES.get(args.city_name.lower(), DEFAULT_CURRENCY)
 OUTPUT_FILE = os.path.join(args.output_dir, f"{args.city_name}_restaurants_interactive.html")
 
 # Check if input file exists, if not try sample or fail
@@ -54,6 +85,8 @@ print("Assigning boroughs...")
 borough_centers = {}
 all_borough_names = []
 try:
+    if BOROUGH_FILE is None:
+        raise FileNotFoundError("No borough file specified")
     boroughs = gpd.read_file(BOROUGH_FILE)
     # Ensure CRS matches (assuming WGS84 for lat/lon)
     if boroughs.crs is None:
@@ -90,6 +123,9 @@ except Exception as e:
     print(f"Warning: Could not assign boroughs ({e}). Defaulting to 'Unknown'.")
     df['borough'] = "Unknown"
     all_borough_names = []
+
+# Track if boroughs are available for UI
+has_boroughs = len(all_borough_names) > 0
 
 # Normalize cuisine column
 def format_cuisine_name(c):
@@ -132,6 +168,8 @@ for _, row in df.iterrows():
             "hype_residual": round(float(row["hype_residual"]), 2) if pd.notnull(row.get("hype_residual")) else 0.0,
             "borough": str(row["borough"]),
             "is_chain": int(row["is_chain"]) if pd.notnull(row.get("is_chain")) else 0,
+            "place_id": str(row["place_id"]) if pd.notnull(row.get("place_id")) else "",
+            "website": str(row["website"]) if pd.notnull(row.get("website")) and str(row.get("website")) != "nan" else "",
         }
         data_list.append(item)
     except (ValueError, TypeError):
@@ -147,7 +185,7 @@ html_content = f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{args.city_name.capitalize()} Restaurant Map</title>
+    <title>{args.city_name.replace("_", " ").title()} Restaurant Map</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
@@ -448,14 +486,18 @@ html_content = f"""
         .popup-meta {{ display: flex; justify-content: space-between; margin-bottom: 8px; color: #666; }}
         .popup-rating {{ font-weight: 600; color: #1a1a1a; display: flex; align-items: center; gap: 4px; }}
         .star-icon {{ color: #f59e0b; }}
-        .popup-link {{ 
-            display: block; 
-            margin-top: 12px; 
-            text-align: center; 
-            background: #f0f0f0; 
-            color: #333; 
-            text-decoration: none; 
-            padding: 8px; 
+        .popup-links {{
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }}
+        .popup-link {{
+            flex: 1;
+            text-align: center;
+            background: #f0f0f0;
+            color: #333;
+            text-decoration: none;
+            padding: 8px;
             border-radius: 6px; 
             font-weight: 500;
             transition: background 0.2s;
@@ -521,7 +563,7 @@ html_content = f"""
 
 <div id="sidebar">
     <div class="control-section">
-        <h1>{args.city_name.capitalize()} Food Map</h1>
+        <h1>{args.city_name.replace("_", " ").title()} Food Map</h1>
         <div style="font-size: 11px; color: #999; margin-top: 4px;">
             Built by <a href="https://laurenleek.eu" target="_blank" style="color: #666; text-decoration: none; font-weight: 500;">Lauren Leek</a>
         </div>
@@ -546,12 +588,12 @@ html_content = f"""
             <div class="toggle-switch"></div>
         </label>
         
-        <div style="margin-bottom: 15px;">
+        {'''<div style="margin-bottom: 15px;">
             <label style="display:block; font-size:12px; font-weight:500; margin-bottom:5px;">Borough</label>
             <select id="boroughSelect" onchange="onBoroughChange()">
                 <option value="All">All Boroughs</option>
             </select>
-        </div>
+        </div>''' if has_boroughs else ''}
 
         <div style="margin-bottom: 15px;">
             <label style="display:block; font-size:12px; font-weight:500; margin-bottom:5px;">Cuisine</label>
@@ -580,10 +622,10 @@ html_content = f"""
     <div class="control-section">
         <h2>Price Level</h2>
         <div class="price-buttons" id="priceFilters">
-            <div class="price-btn active" onclick="togglePrice(1, this)">£</div>
-            <div class="price-btn active" onclick="togglePrice(2, this)">££</div>
-            <div class="price-btn active" onclick="togglePrice(3, this)">£££</div>
-            <div class="price-btn active" onclick="togglePrice(4, this)">££££</div>
+            <div class="price-btn active" onclick="togglePrice(1, this)">{currency_symbol}</div>
+            <div class="price-btn active" onclick="togglePrice(2, this)">{currency_symbol * 2}</div>
+            <div class="price-btn active" onclick="togglePrice(3, this)">{currency_symbol * 3}</div>
+            <div class="price-btn active" onclick="togglePrice(4, this)">{currency_symbol * 4}</div>
         </div>
     </div>
 
@@ -706,13 +748,15 @@ html_content = f"""
     activeCuisines = new Set(uniqueCuisines);
 
     var boroughSelect = document.getElementById('boroughSelect');
-    uniqueBoroughs.forEach(b => {{
-        if (b === "Unknown") return;
-        var opt = document.createElement('option');
-        opt.value = b;
-        opt.innerHTML = b;
-        boroughSelect.appendChild(opt);
-    }});
+    if (boroughSelect) {{
+        uniqueBoroughs.forEach(b => {{
+            if (b === "Unknown") return;
+            var opt = document.createElement('option');
+            opt.value = b;
+            opt.innerHTML = b;
+            boroughSelect.appendChild(opt);
+        }});
+    }}
 
     var legend = document.getElementById('legend');
     uniqueCuisines.forEach(c => {{
@@ -836,7 +880,8 @@ html_content = f"""
 
     function updateMap() {{
         var selectedCuisine = document.getElementById('cuisineSelect').value;
-        var selectedBorough = document.getElementById('boroughSelect').value;
+        var boroughEl = document.getElementById('boroughSelect');
+        var selectedBorough = boroughEl ? boroughEl.value : "All";
         var minRating = parseFloat(document.getElementById('ratingRange').value);
         var minReviews = parseInt(document.getElementById('reviewRange').value);
         var searchText = document.getElementById('searchInput').value.toLowerCase();
@@ -895,12 +940,19 @@ html_content = f"""
                 fillOpacity: 0.85
             }});
             
-            var priceStr = r.price > 0 ? '£'.repeat(r.price) : '?';
+            var priceStr = r.price > 0 ? '{currency_symbol}'.repeat(r.price) : '?';
             var hypeBadge = "";
             if (r.hype_residual > 0.2) {{
                 hypeBadge = `<span class="underrated-badge" title="Actual rating is ${{r.hype_residual}} higher than expected">Underrated +${{r.hype_residual}}</span>`;
             }}
             
+            var mapsUrl = r.place_id
+                ? `https://www.google.com/maps/place/?q=place_id:${{r.place_id}}`
+                : `https://www.google.com/maps/search/?api=1&query=${{r.lat}},${{r.lon}}`;
+            var websiteLink = r.website
+                ? `<a href="${{r.website}}" target="_blank" class="popup-link">Website</a>`
+                : '';
+
             var popupContent = `
                 <div class="popup-header" style="${{showUnderrated ? 'background:'+color : ''}}">
                     <h3 class="popup-title">${{r.name}}</h3>
@@ -911,14 +963,15 @@ html_content = f"""
                         <span>${{priceStr}}</span>
                     </div>
                     <div class="popup-rating">
-                        <span class="star-icon">★</span> ${{r.rating}} 
+                        <span class="star-icon">★</span> ${{r.rating}}
                         <span style="color:#888; font-weight:400; font-size:12px; margin-left:4px;">(${{r.reviews}} reviews)</span>
                         ${{hypeBadge}}
                     </div>
                     <p style="margin: 8px 0 0 0; color: #555;">${{r.vicinity}}</p>
-                    <a href="https://www.google.com/maps/search/?api=1&query=${{r.lat}},${{r.lon}}" target="_blank" class="popup-link">
-                        Get Directions
-                    </a>
+                    <div class="popup-links">
+                        <a href="${{mapsUrl}}" target="_blank" class="popup-link">View on Google Maps</a>
+                        ${{websiteLink}}
+                    </div>
                 </div>
             `;
             
