@@ -10,8 +10,7 @@ venv/
 
 # Data
 data/raw/*
-!data/raw/london_boroughs.geojson
-!data/raw/amsterdam_boroughs.geojson
+!data/raw/*.geojson
 data/processed/*
 output/*
 !output/*_restaurants_interactive.html
