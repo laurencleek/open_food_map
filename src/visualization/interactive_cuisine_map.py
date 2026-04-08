@@ -17,11 +17,13 @@ DEFAULT_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
 # City-specific currency mapping
 CITY_CURRENCIES = {
     # US cities
-    "new_york": "$",
-    "san_francisco": "$",
+    "atlanta": "$",
+    "chicago": "$",
     "los_angeles": "$",
     "miami": "$",
-    "chicago": "$",
+    "new_york": "$",
+    "san_francisco": "$",
+    "vancouver": "$",
     # UK cities
     "london": "£",
     # Euro cities
@@ -149,6 +151,12 @@ if "is_chain" not in df.columns:
 data_bounds = [
     [float(df["lat"].min()), float(df["lon"].min())],
     [float(df["lat"].max()), float(df["lon"].max())],
+]
+
+# Centre for map (since that won't always be the centre of London)
+map_centre = [
+    (float(df["lat"].min()) + float(df["lat"].max()))/2,
+    (float(df["lon"].min()) + float(df["lon"].max()))/2,
 ]
 
 # Prepare data list for JSON
@@ -652,6 +660,7 @@ html_content = f"""
     var boroughCenters = {json.dumps(borough_centers)};
     var allBoroughs = {json.dumps(all_borough_names)};
     var dataBounds = {json.dumps(data_bounds)};
+    var mapCentre = {json.dumps(map_centre)};
     
     // --- State ---
     var activePrices = [1, 2, 3, 4];
@@ -859,8 +868,8 @@ html_content = f"""
                 duration: 1.5
             }});
         }} else if (b === "All") {{
-            // Reset to London view
-            map.flyTo([51.5074, -0.1278], 11, {{
+            // Reset to centre of map
+            map.flyTo(mapCentre, 12, {{
                 animate: true,
                 duration: 1.5
             }});
