@@ -673,7 +673,7 @@ def extend_cuisine_offline(out_path: Optional[pathlib.Path] = None, inplace: boo
             print(f"[info] Backed up original details to {backup}")
         out_file = DETAILS_CSV
     else:
-        out_file = out_path or (OUTDIR / ("london_restaurant_details.extended.csv" if not from_base else "london_restaurant_details.extended_full.csv"))
+        out_file = out_path or (OUTDIR / (f"{CITY_NAME}_restaurant_details.extended.csv" if not from_base else f"{CITY_NAME}_restaurant_details.extended_full.csv"))
         out_file.parent.mkdir(parents=True, exist_ok=True)
 
     with out_file.open("w", newline="", encoding="utf-8") as f:
