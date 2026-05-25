@@ -50,7 +50,12 @@ def main() -> int:
 
     details_path = os.path.join(args.input_dir, f"{args.city_name}_restaurant_details.csv")
     basic_path = os.path.join(args.input_dir, f"{args.city_name}_restaurants.csv")
+    extended_path = os.path.join(args.input_dir, f"{args.city_name}_restaurant_details.extended.csv")
 
+    if os.path.exists(extended_path):
+        print(f"[info] Using extended cuisine file: {extended_path}")
+        details_path = extended_path
+        
     if not os.path.exists(details_path):
         sample_details = os.path.join("data", "sample", "london_restaurant_details.csv")
         if os.path.exists(sample_details):
